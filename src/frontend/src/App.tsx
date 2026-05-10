@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { UploadPanel, type TextbookSummary } from "./components/UploadPanel";
 import "./App.css";
 
@@ -101,12 +101,23 @@ function ChapterList({ textbookId }: { textbookId: string }) {
   const [chapters, setChapters] = useState<Chapter[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (chapters === null && !error) {
+  // 关键：textbookId 变化时清空旧数据并重新拉取
+  useEffect(() => {
+    let cancelled = false;
+    setChapters(null);
+    setError(null);
     fetch(`/api/textbooks/${textbookId}/chapters`)
       .then((r) => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
-      .then(setChapters)
-      .catch((e) => setError(String(e)));
-  }
+      .then((data: Chapter[]) => {
+        if (!cancelled) setChapters(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [textbookId]);
 
   if (error) return <div style={{ color: "#c33" }}>加载章节失败：{error}</div>;
   if (!chapters) return <div>加载章节中...</div>;
