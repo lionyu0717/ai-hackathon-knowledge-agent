@@ -38,7 +38,9 @@ def health() -> dict:
         "ok": True,
         "service": "knowledge-agent",
         "version": app.version,
-        "llm_key_configured": bool(os.getenv("DEEPSEEK_API_KEY")),
+        "llm_provider": "modelscope",
+        "llm_model": os.getenv("LLM_MODEL", "deepseek-ai/DeepSeek-V3.2"),
+        "llm_key_configured": bool(os.getenv("MODELSCOPE_ACCESS_TOKEN")),
     }
 
 
