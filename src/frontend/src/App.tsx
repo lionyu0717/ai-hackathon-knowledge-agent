@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { UploadPanel, type TextbookSummary } from "./components/UploadPanel";
+import { GraphView } from "./components/GraphView";
 import "./App.css";
+
+type CenterView = "graph" | "chapters";
 
 export default function App() {
   const [selected, setSelected] = useState<TextbookSummary | null>(null);
+  const [view, setView] = useState<CenterView>("graph");
 
   return (
     <div
@@ -38,17 +42,32 @@ export default function App() {
       {/* Left: upload */}
       <UploadPanel onSelect={setSelected} selectedId={selected?.textbook_id || null} />
 
-      {/* Center: graph placeholder */}
-      <main style={{ background: "#f1f5f9", padding: "1rem", overflowY: "auto" }}>
+      {/* Center: graph (默认) / chapters */}
+      <main style={{ background: "#f8fafc", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {selected ? (
-          <div>
-            <h2 style={{ marginTop: 0 }}>{selected.title}</h2>
-            <div style={{ color: "#64748b", marginBottom: "1rem" }}>
-              {selected.filename} · {selected.total_pages} 页 · {selected.chapter_count} 章 ·{" "}
-              {selected.total_chars.toLocaleString()} 字
+          <>
+            <div style={{ padding: "0.6rem 1rem", borderBottom: "1px solid #e5e7eb",
+              background: "#fff", display: "flex", alignItems: "center", gap: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 16 }}>{selected.title}</h2>
+              <div style={{ color: "#64748b", fontSize: 12 }}>
+                {selected.total_pages} 页 · {selected.chapter_count} 章 ·{" "}
+                {selected.total_chars.toLocaleString()} 字
+              </div>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                <ViewBtn active={view === "graph"} onClick={() => setView("graph")}>📊 图谱</ViewBtn>
+                <ViewBtn active={view === "chapters"} onClick={() => setView("chapters")}>📖 章节</ViewBtn>
+              </div>
             </div>
-            <ChapterList textbookId={selected.textbook_id} />
-          </div>
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              {view === "graph" ? (
+                <GraphView key={selected.textbook_id} textbookId={selected.textbook_id} />
+              ) : (
+                <div style={{ height: "100%", overflowY: "auto", padding: "1rem" }}>
+                  <ChapterList textbookId={selected.textbook_id} />
+                </div>
+              )}
+            </div>
+          </>
         ) : (
           <EmptyCenter />
         )}
@@ -68,6 +87,20 @@ export default function App() {
         </div>
       </aside>
     </div>
+  );
+}
+
+function ViewBtn({ active, onClick, children }: {
+  active: boolean; onClick: () => void; children: React.ReactNode;
+}) {
+  return (
+    <button onClick={onClick} style={{
+      padding: "4px 10px", fontSize: 12, border: "1px solid",
+      borderColor: active ? "#2563eb" : "#cbd5e1",
+      background: active ? "#2563eb" : "#fff",
+      color: active ? "#fff" : "#475569",
+      borderRadius: 4, cursor: "pointer",
+    }}>{children}</button>
   );
 }
 

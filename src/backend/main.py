@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
 from .routers import parse as parse_router
+from .routers import graph as graph_router
 from .services import store
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -40,6 +41,7 @@ app.add_middleware(
 
 
 app.include_router(parse_router.router)
+app.include_router(graph_router.router)
 
 
 @app.get("/api/health")

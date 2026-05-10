@@ -1,0 +1,192 @@
+"""知识点抽取服务
+
+赛题 P0-2 验收要求：
+  「为每章构建知识图谱并可视化」
+  节点 schema: {id, name, definition, category, chapter, page}
+  关系类型 ≥ 3 种（prerequisite/parallel/contains/applies_to）
+  Prompt 设计建议：明确 JSON 格式 + few-shot + 限制每次只处理一个章节
+
+实现策略（PLAN v2 决策 1：知识颗粒度=原子概念）：
+  - 每章节单独调一次 LLM，避免上下文过长
+  - JSON 强约束 prompt + few-shot 示例
+  - Chapter 内容超过 max_input_chars 时截断（取前段，包含定义最密集的部分）
+  - 缓存：相同 chapter content hash → 复用结果，避免烧 token
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+
+from ..models.schemas import Chapter, KnowledgeEdge, KnowledgeNode
+from .llm import chat_json
+
+logger = logging.getLogger(__name__)
+
+# 单章节最长输入（约 6K 中文字符 ~ 3K token，留余量给 prompt 与 output）
+MAX_INPUT_CHARS = 6000
+
+EXTRACTION_SYSTEM = "你是教育领域专家，擅长从教材文本中提取知识图谱。"
+
+# Few-shot 示例 + JSON 强约束（赛题建议）
+EXTRACTION_PROMPT_TEMPLATE = """从下方给定的教材章节内容中，提取**核心知识点**，并识别它们之间的关系。
+
+## 颗粒度规范（必须严格遵守）
+- 每个知识点的 name 必须是 2-12 字的**原子名词短语**（可被「什么是X？」独立提问）
+- 每章节产出 5-15 个知识点，按教学重要度排序
+- ❌ 禁止输出："本章简介"、"复习题"、章节号本身、过粗的话题（如"血液"应拆为"红细胞"/"白细胞"等）
+- ❌ 禁止输出 name 含括号、引号或标点的复合短语
+
+## 关系类型（4 选 ≥ 3）
+| 类型 | 说明 |
+|------|------|
+| prerequisite | A 是学习 B 的前置（先掌握 A 才能理解 B） |
+| parallel | A 和 B 是同层级的并列概念 |
+| contains | A 包含 B（上位/下位关系）|
+| applies_to | A 的应用场景是 B |
+
+## 输出格式（严格 JSON，不要其他文字）
+{{
+  "nodes": [
+    {{"name": "动作电位", "definition": "细胞受刺激后膜电位发生的快速可逆倒转", "category": "核心概念"}},
+    {{"name": "静息电位", "definition": "未受刺激时细胞膜内外的电位差", "category": "核心概念"}}
+  ],
+  "edges": [
+    {{"source": "静息电位", "target": "动作电位", "relation_type": "prerequisite", "description": "理解动作电位需先掌握静息电位"}}
+  ]
+}}
+
+注意：edges 中的 source/target 必须使用 nodes 中已声明的 name，不能引用未声明的概念。
+
+## 章节内容
+标题：{chapter_title}
+正文：
+{chapter_content}
+"""
+
+
+@dataclass
+class ExtractionResult:
+    nodes: list[KnowledgeNode]
+    edges: list[KnowledgeEdge]
+    raw: dict
+
+
+def _truncate_for_llm(text: str, limit: int = MAX_INPUT_CHARS) -> str:
+    """超长章节截断：取前 70% + 末尾 30%（首章定义密集，末尾常有总结）"""
+    if len(text) <= limit:
+        return text
+    head = text[: int(limit * 0.7)]
+    tail = text[-int(limit * 0.3):]
+    return head + "\n\n...（中间内容因长度限制省略）...\n\n" + tail
+
+
+def _node_id(textbook_id: str, chapter_id: str, name: str) -> str:
+    h = hashlib.md5(name.encode("utf-8")).hexdigest()[:6]
+    return f"{textbook_id}_{chapter_id}_{h}"
+
+
+def extract_chapter(
+    textbook_id: str, chapter: Chapter,
+) -> ExtractionResult:
+    """单章节抽取 → 节点列表 + 边列表"""
+    if not chapter.content.strip():
+        return ExtractionResult([], [], {})
+
+    prompt = EXTRACTION_PROMPT_TEMPLATE.format(
+        chapter_title=chapter.title,
+        chapter_content=_truncate_for_llm(chapter.content),
+    )
+
+    try:
+        raw = chat_json(prompt, EXTRACTION_SYSTEM, max_tokens=2500, temperature=0.15)
+    except Exception as e:
+        logger.warning(f"[extract] LLM call failed for {chapter.chapter_id}: {e}")
+        return ExtractionResult([], [], {"error": str(e)})
+
+    if not isinstance(raw, dict):
+        logger.warning(f"[extract] unexpected JSON shape for {chapter.chapter_id}: {type(raw)}")
+        return ExtractionResult([], [], {"error": "invalid shape"})
+
+    raw_nodes = raw.get("nodes", []) or []
+    raw_edges = raw.get("edges", []) or []
+
+    # 名称去重（同一章节内）+ 构造节点
+    seen_names: dict[str, str] = {}  # name → node_id
+    nodes: list[KnowledgeNode] = []
+    for n in raw_nodes:
+        if not isinstance(n, dict):
+            continue
+        name = (n.get("name") or "").strip()
+        if not name or len(name) > 50:
+            continue
+        # 过滤明显垃圾（含标点 / 章节号）
+        if re.search(r"[，。？！；：（）()【】\[\]『』]", name):
+            continue
+        if name in seen_names:
+            continue
+        node_id = _node_id(textbook_id, chapter.chapter_id, name)
+        seen_names[name] = node_id
+        nodes.append(KnowledgeNode(
+            id=node_id,
+            name=name,
+            definition=(n.get("definition") or "").strip()[:500],
+            category=(n.get("category") or "核心概念").strip()[:30],
+            textbook_id=textbook_id,
+            chapter_id=chapter.chapter_id,
+            chapter_title=chapter.title,
+            page=chapter.page_start,
+        ))
+
+    # 构造边（仅保留 source/target 都已声明的）
+    edges: list[KnowledgeEdge] = []
+    valid_relations = {"prerequisite", "parallel", "contains", "applies_to"}
+    for e in raw_edges:
+        if not isinstance(e, dict):
+            continue
+        src_name = (e.get("source") or "").strip()
+        tgt_name = (e.get("target") or "").strip()
+        rel = (e.get("relation_type") or "").strip()
+        if rel not in valid_relations:
+            continue
+        if src_name not in seen_names or tgt_name not in seen_names:
+            continue
+        edges.append(KnowledgeEdge(
+            source=seen_names[src_name],
+            target=seen_names[tgt_name],
+            relation_type=rel,  # type: ignore[arg-type]
+            description=(e.get("description") or "").strip()[:200],
+        ))
+
+    return ExtractionResult(nodes, edges, raw)
+
+
+def extract_textbook(
+    textbook_id: str, chapters: list[Chapter],
+    *, max_workers: int = 5, on_progress=None,
+) -> tuple[list[KnowledgeNode], list[KnowledgeEdge]]:
+    """并发抽取整本教材，限速 max_workers 并发请求"""
+    all_nodes: list[KnowledgeNode] = []
+    all_edges: list[KnowledgeEdge] = []
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = {ex.submit(extract_chapter, textbook_id, ch): ch for ch in chapters}
+        done_count = 0
+        for fut in as_completed(futures):
+            ch = futures[fut]
+            try:
+                res = fut.result()
+                all_nodes.extend(res.nodes)
+                all_edges.extend(res.edges)
+                done_count += 1
+                if on_progress:
+                    on_progress(done_count, len(chapters), ch.chapter_id, len(res.nodes))
+                logger.info(f"[extract] {ch.chapter_id} {ch.title[:30]}: "
+                             f"{len(res.nodes)} nodes, {len(res.edges)} edges")
+            except Exception as e:
+                logger.error(f"[extract] {ch.chapter_id} failed: {e}")
+
+    return all_nodes, all_edges
