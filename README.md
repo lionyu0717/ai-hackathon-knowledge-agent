@@ -78,8 +78,9 @@ npm run dev
 ### Docker 一键运行（生产/部署）
 
 ```bash
-docker build -t knowledge-agent .
-docker run -p 7860:7860 -e MODELSCOPE_ACCESS_TOKEN=ms-xxx knowledge-agent
+cp .env.example .env
+# 编辑 .env，填入 MODELSCOPE_ACCESS_TOKEN
+docker compose up -d --build
 # 访问 http://localhost:7860
 ```
 
@@ -116,10 +117,10 @@ docker run -p 7860:7860 -e MODELSCOPE_ACCESS_TOKEN=ms-xxx knowledge-agent
 │   ├── 需求分析.md
 │   ├── 系统设计.md
 │   ├── Agent架构说明.md       # 评分核心文档
-│   └── P2-技术报告.md         # 选交
+│   └── P2-技术报告.md         # 挑战加分项技术报告
 ├── report/
-│   ├── 整合报告.md            # 7 本教材实测结果
-│   └── 精华教材.md            # 30% 压缩产物
+│   ├── 整合报告.md            # 当前实测结果 + 7 本全量补跑口径
+│   └── 精华教材.md            # 30% 压缩产物格式
 └── data/                      # gitignore: 教材 / 数据库 / 索引 / 模型缓存
 ```
 
@@ -129,13 +130,35 @@ docker run -p 7860:7860 -e MODELSCOPE_ACCESS_TOKEN=ms-xxx knowledge-agent
 |------|------|------|
 | LLM | ModelScope API Inference（OpenAI 兼容） | 优先免费额度模型；限流时支持 `模型ID:外部提供方` 兜底 |
 | 嵌入 | BGE-small-zh-v1.5 本地推理 | 100MB，免 API 延迟与计费 |
-| 向量库 | ChromaDB | 内嵌 Python，零部署 |
+| 向量库 | SQLite embedding BLOB（可迁移 ChromaDB） | 单容器部署稳定，零额外服务 |
 | 检索 | 向量 + BM25 → RRF 融合 → top-5 | 论文级 baseline，免参数调优 |
 | PDF 解析 | PyMuPDF4LLM | 直出 Markdown，保留章节层级 |
 | 30% 压缩 | **原文精选** + 元数据导览（不重写） | 保证引用 100% 真实可点击 |
 | Agent 框架 | **不引入**，OpenAI SDK function calling 手动编排 | 5h 调试 callback 不划算 |
 
 详细论证见 [docs/Agent架构说明.md](docs/Agent架构说明.md)。
+
+## Phase 4 RAG 测试集结果
+
+```text
+教材数: 4
+chunks: 3494
+embedded chunks: 3494
+eval cases: 10
+keyword_hit@5: 100%
+book_hit@5: 100%
+elapsed: 34.8s
+```
+
+详见 [docs/P2-技术报告.md](docs/P2-技术报告.md)。
+
+## 测试
+
+```bash
+python -m compileall src/backend
+pytest src/backend/tests
+cd src/frontend && npm run build
+```
 
 ## 评分维度对照
 

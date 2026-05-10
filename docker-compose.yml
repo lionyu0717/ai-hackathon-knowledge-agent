@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    env_file:
+      - .env
+    environment:
+      PORT: "7860"
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "7860:7860"
+    restart: unless-stopped
