@@ -53,6 +53,9 @@ RUN pip install --no-cache-dir \
 
 # 后端代码
 COPY src/backend/ ./src/backend/
+COPY docs/ ./docs/
+COPY report/ ./report/
+COPY README.md PLAN-v2.md ./
 
 # 把前端 build 产物拷进 backend/static（FastAPI mount）
 COPY --from=frontend-builder /app/frontend/dist ./src/backend/static

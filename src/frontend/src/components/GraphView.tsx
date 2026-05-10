@@ -52,6 +52,20 @@ const RELATION_LABEL: Record<string, string> = {
   applies_to: "应用于",
 };
 
+const CATEGORY_SYMBOL: Record<string, string> = {
+  核心概念: "circle",
+  概念: "circle",
+  方法: "rect",
+  定理: "diamond",
+  现象: "triangle",
+  机制: "triangle",
+  启发式概念: "roundRect",
+};
+
+function nodeSymbol(category: string) {
+  return CATEGORY_SYMBOL[category] || "circle";
+}
+
 export function GraphView({ textbookId }: { textbookId: string }) {
   const isGlobal = textbookId === "all";
   const containerRef = useRef<HTMLDivElement>(null);
@@ -153,6 +167,21 @@ export function GraphView({ textbookId }: { textbookId: string }) {
           recordClick(params.data as GraphNode);
         }
       });
+      chartRef.current.on("dblclick", (params: any) => {
+        if (params.dataType === "node") {
+          chartRef.current?.dispatchAction({ type: "downplay", seriesIndex: 0 });
+          chartRef.current?.dispatchAction({
+            type: "focusNodeAdjacency",
+            seriesIndex: 0,
+            dataIndex: params.dataIndex,
+          });
+          chartRef.current?.dispatchAction({
+            type: "showTip",
+            seriesIndex: 0,
+            dataIndex: params.dataIndex,
+          });
+        }
+      });
       const onResize = () => chartRef.current?.resize();
       window.addEventListener("resize", onResize);
       return () => {
@@ -217,6 +246,7 @@ export function GraphView({ textbookId }: { textbookId: string }) {
         categories: categories.map((c) => ({ name: c })),
         data: graph.nodes.map((n) => ({
           ...n,
+          symbol: nodeSymbol(n.category),
           category_name: n.category,
           symbolSize: Math.min(72, 15 + n.value * 3 + (clickCounts[n.id] || 0) * 2),
           category: catIdx.get(isGlobal ? (n.textbook_title || n.textbook_id || "未知教材") : n.category) ?? 0,
@@ -268,6 +298,21 @@ export function GraphView({ textbookId }: { textbookId: string }) {
     return compact.slice(start, start + 2200);
   }, [selected, sourceContent]);
 
+  const focusFirstMatch = useCallback(() => {
+    if (!graph || !query.trim()) return;
+    const q = query.trim().toLowerCase();
+    const idx = graph.nodes.findIndex((n) =>
+      `${n.name} ${n.definition} ${n.chapter} ${n.textbook_title || ""}`.toLowerCase().includes(q)
+    );
+    if (idx < 0) return;
+    const node = graph.nodes[idx];
+    setSelected(node);
+    setSourceContent(null);
+    chartRef.current?.dispatchAction({ type: "downplay", seriesIndex: 0 });
+    chartRef.current?.dispatchAction({ type: "highlight", seriesIndex: 0, dataIndex: idx });
+    chartRef.current?.dispatchAction({ type: "showTip", seriesIndex: 0, dataIndex: idx });
+  }, [graph, query]);
+
   return (
     <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
       {/* 顶部状态条 */}
@@ -286,6 +331,9 @@ export function GraphView({ textbookId }: { textbookId: string }) {
             borderRadius: 5, fontSize: 12,
           }}
         />
+        <button onClick={focusFirstMatch} disabled={!query.trim()} style={btnStyle(!query.trim())}>
+          定位
+        </button>
         {hasGraph ? (
           <>
             <div style={{ fontSize: 13, color: "#475569" }}>

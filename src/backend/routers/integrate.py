@@ -18,6 +18,12 @@ class IntegrationRunRequest(BaseModel):
     textbook_ids: list[str] = []
 
 
+class IntegrationDecisionPatch(BaseModel):
+    action: str
+    reason: str | None = None
+    confidence: float | None = None
+
+
 def _do_run(run_id: str, textbook_ids: list[str]) -> None:
     try:
         store.update_integration_run(run_id, status="running")
@@ -93,4 +99,30 @@ def get_summary(run_id: str | None = None) -> dict:
         "run_id": run["run_id"],
         "status": run["status"],
         "summary_markdown": run["summary_markdown"],
+    }
+
+
+@router.patch("/decisions/{decision_id}")
+def patch_decision(decision_id: str, req: IntegrationDecisionPatch) -> dict:
+    if req.action not in {"merge", "keep", "remove"}:
+        raise HTTPException(400, "action must be merge, keep, or remove")
+    current = store.get_integration_decision(decision_id)
+    if not current:
+        raise HTTPException(404, "decision not found")
+    reason = req.reason or current["reason"]
+    if req.reason:
+        reason = f"{req.reason}（教师手动覆盖，原理由：{current['reason']}）"
+    ok = store.update_integration_decision_action(
+        decision_id,
+        req.action,
+        reason,
+        req.confidence if req.confidence is not None else 0.97,
+    )
+    if not ok:
+        raise HTTPException(404, "decision not found")
+    store.refresh_integration_decision_counts(current["run_id"])
+    return {
+        "updated": True,
+        "decision": store.get_integration_decision(decision_id),
+        "stats": store.get_integration_run(current["run_id"])["stats"].model_dump(),
     }

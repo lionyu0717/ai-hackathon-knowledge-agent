@@ -462,6 +462,25 @@ def list_integration_decisions(run_id: str | None = None) -> list[dict]:
         return out
 
 
+def get_integration_decision(decision_id: str) -> dict | None:
+    with conn() as c:
+        r = c.execute("SELECT * FROM integration_decisions WHERE decision_id=?", (decision_id,)).fetchone()
+        if not r:
+            return None
+        return {
+            "decision_id": r["decision_id"],
+            "run_id": r["run_id"],
+            "action": r["action"],
+            "affected_nodes": json.loads(r["affected_nodes"] or "[]"),
+            "result_node": r["result_node"],
+            "result_chunks": json.loads(r["result_chunks"] or "[]"),
+            "reason": r["reason"] or "",
+            "confidence": r["confidence"] or 0.0,
+            "source_excerpt": r["source_excerpt"] or "",
+            "source_refs": json.loads(r["source_refs"] or "[]"),
+        }
+
+
 def update_integration_decision_action(
     decision_id: str, action: str, reason: str, confidence: float | None = None,
 ) -> bool:
@@ -477,6 +496,23 @@ def update_integration_decision_action(
             values,
         )
         return cur.rowcount > 0
+
+
+def refresh_integration_decision_counts(run_id: str) -> None:
+    run = get_integration_run(run_id)
+    if not run:
+        return
+    stats = run["stats"]
+    with conn() as c:
+        rows = c.execute(
+            "SELECT action, COUNT(*) AS cnt FROM integration_decisions WHERE run_id=? GROUP BY action",
+            (run_id,),
+        ).fetchall()
+    counts = {r["action"]: int(r["cnt"]) for r in rows}
+    stats.decisions_merge = counts.get("merge", 0)
+    stats.decisions_keep = counts.get("keep", 0)
+    stats.decisions_remove = counts.get("remove", 0)
+    update_integration_run(run_id, stats=stats)
 
 
 # ============== RAG chunks ==============

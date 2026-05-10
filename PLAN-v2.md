@@ -342,13 +342,13 @@
 1. 前端 `npm run build` → `src/backend/static/`
 2. push 到 GitHub → 触发魔搭重 build
 3. 端到端冒烟测试：
-   - [ ] 公网 URL 可打开
-   - [ ] 上传 / 解析 7 本教材成功（02 体积最大时至少完成冒烟解析）
-   - [ ] 为 7 本教材构建图谱；若 API 限流，启用 ModelScope 外部 provider 或启发式兜底抽取
-   - [ ] 图谱渲染、点击有详情，并能区分 7 本教材来源
-   - [ ] 触发 7 本教材整合，压缩比 ≤ 30%
-   - [ ] RAG 提问获得带引用回答
-   - [ ] 对话能改决策
+   - [x] 公网 URL 可打开
+   - [x] 上传 / 解析 7 本教材成功（02 体积最大，已完成解析）
+   - [x] 为 7 本教材构建图谱；API 限流时启用 ModelScope 外部 provider 或启发式兜底抽取
+   - [x] 图谱渲染、点击有详情，并能区分 7 本教材来源
+   - [x] 触发 7 本教材整合，压缩比 5.84% ≤ 30%
+   - [x] RAG 提问获得带引用回答，7 本索引 6113 chunks
+   - [x] 对话和决策卡片均能改决策
 4. README 加部署链接 + 截图
 5. `git commit -am "final" && git push`
 
@@ -435,30 +435,32 @@ ai-hackathon-knowledge-agent/
 
 按用户需求顺序：
 
+> 最终状态更新：Phase 0 的脚手架、部署回路和仓库创建已完成；样式方案改为 React inline CSS + ECharts，未引入 Tailwind 以降低依赖复杂度。
+
 1. **本地脚手架**：
-   - [ ] 验证 python3.10+/node18+/git/gh
-   - [ ] requirements.txt
-   - [ ] FastAPI minimal `main.py`（`/api/health`）
-   - [ ] Vite + React + TS（`npm create`）
-   - [ ] Tailwind 配好
-   - [ ] `.gitignore`
-   - [ ] 本地双端跑通（前端 dev server fetch 后端 health）
+   - [x] 验证 python3.10+/node18+/git/gh
+   - [x] requirements.txt
+   - [x] FastAPI `main.py`（`/api/health`）
+   - [x] Vite + React + TS
+   - [x] 样式方案确定：React inline CSS + ECharts
+   - [x] `.gitignore`
+   - [x] 本地双端跑通（前端 dev server fetch 后端 health）
 
 2. **本地 → 公网回路**：
-   - [ ] Dockerfile（前端 build + 后端 + StaticFiles mount）
-   - [ ] 本地 `docker build && docker run` 验证
+   - [x] Dockerfile（前端 build + 后端 + StaticFiles mount）
+   - [x] 本地构建验证
 
 3. **GitHub 仓库**：
-   - [ ] `git init` + 首次 commit
-   - [ ] `gh repo create` Public
-   - [ ] push
+   - [x] `git init` + commit
+   - [x] GitHub Public 仓库
+   - [x] push
 
 4. **魔搭部署**：
-   - [ ] 用户在 modelscope.cn 创建 Studio（Docker SDK）
-   - [ ] README 头部加 ModelScope YAML metadata（sdk: docker）
-   - [ ] 关联 GitHub 仓库或 push 到 ModelScope Git
-   - [ ] 配置 Secrets（DEEPSEEK_API_KEY）
-   - [ ] 等待构建完成 → 公网 URL 可访问
+   - [x] 用户在 modelscope.cn 创建 Studio（Docker SDK）
+   - [x] README 头部加 ModelScope YAML metadata（sdk: docker）
+   - [x] 关联 GitHub 仓库并 push 到 ModelScope Git
+   - [x] 配置 Secrets（MODELSCOPE_ACCESS_TOKEN）
+   - [x] 等待构建完成 → 公网 URL 可访问
 
 ---
 

@@ -117,9 +117,10 @@ docker compose up -d --build
 │   ├── 需求分析.md
 │   ├── 系统设计.md
 │   ├── Agent架构说明.md       # 评分核心文档
-│   └── P2-技术报告.md         # 挑战加分项技术报告
+│   ├── P2-技术报告.md         # 挑战加分项技术报告
+│   └── 评分自检表.md          # A-F 逐项证据映射
 ├── report/
-│   ├── 整合报告.md            # 当前实测结果 + 7 本全量补跑口径
+│   ├── 整合报告.md            # 7 本教材全量实测结果
 │   └── 精华教材.md            # 30% 压缩产物格式
 └── data/                      # gitignore: 教材 / 数据库 / 索引 / 模型缓存
 ```
@@ -141,13 +142,13 @@ docker compose up -d --build
 ## Phase 4 RAG 测试集结果
 
 ```text
-教材数: 4
-chunks: 3494
-embedded chunks: 3494
+教材数: 7
+chunks: 6113
+embedded chunks: 6113
 eval cases: 10
 keyword_hit@5: 100%
 book_hit@5: 100%
-elapsed: 34.8s
+elapsed: 60.1s
 ```
 
 详见 [docs/P2-技术报告.md](docs/P2-技术报告.md)。

@@ -4,10 +4,11 @@ import { GraphView } from "./components/GraphView";
 import { ChatPanel } from "./components/ChatPanel";
 import { IntegratePanel } from "./components/IntegratePanel";
 import { RagPanel } from "./components/RagPanel";
+import { ReportPanel } from "./components/ReportPanel";
 import "./App.css";
 
 type CenterView = "global" | "graph" | "chapters";
-type SideView = "integrate" | "rag" | "chat";
+type SideView = "integrate" | "rag" | "chat" | "report";
 
 export default function App() {
   const [selected, setSelected] = useState<TextbookSummary | null>(null);
@@ -40,7 +41,7 @@ export default function App() {
       >
         <div style={{ fontWeight: 700, fontSize: 16 }}>📚 学科知识整合智能体</div>
         <div style={{ fontSize: 12, color: "#cbd5e1" }}>
-          AI 全栈极速黑客松 · Phase 3
+          AI 全栈极速黑客松 · 全流程版
         </div>
       </header>
 
@@ -109,10 +110,12 @@ export default function App() {
           <ViewBtn active={sideView === "integrate"} onClick={() => setSideView("integrate")}>整合</ViewBtn>
           <ViewBtn active={sideView === "rag"} onClick={() => setSideView("rag")}>RAG</ViewBtn>
           <ViewBtn active={sideView === "chat"} onClick={() => setSideView("chat")}>对话</ViewBtn>
+          <ViewBtn active={sideView === "report"} onClick={() => setSideView("report")}>报告</ViewBtn>
         </div>
         {sideView === "integrate" && <IntegratePanel />}
         {sideView === "rag" && <RagPanel />}
         {sideView === "chat" && <ChatPanel />}
+        {sideView === "report" && <ReportPanel />}
       </aside>
     </div>
   );

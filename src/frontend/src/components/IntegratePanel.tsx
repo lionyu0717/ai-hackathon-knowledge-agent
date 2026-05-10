@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as echarts from "echarts";
 
 type IntegrationStats = {
   original_textbooks: number;
@@ -49,6 +50,7 @@ export function IntegratePanel() {
   const [summary, setSummary] = useState("");
   const [memo, setMemo] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const running = status.status === "queued" || status.status === "running";
 
   const refresh = useCallback(async () => {
@@ -95,6 +97,24 @@ export function IntegratePanel() {
     setTimeout(() => refresh().catch(() => {}), 500);
   }, [refresh]);
 
+  const updateDecision = useCallback(async (
+    decisionId: string,
+    action: IntegrationDecision["action"],
+    reason: string,
+  ) => {
+    setSaveMessage(null);
+    const r = await fetch(`/api/integrate/decisions/${decisionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, reason, confidence: 0.97 }),
+    });
+    if (!r.ok) {
+      throw new Error(await r.text());
+    }
+    setSaveMessage(`已保存 ${decisionId} → ${ACTION_LABEL[action]}`);
+    await refresh();
+  }, [refresh]);
+
   const linkedPreview = useMemo(() => {
     const text = memo || summary;
     return text.split(/(\[\[[^\]]+\]\])/g).map((part, idx) => {
@@ -122,6 +142,7 @@ export function IntegratePanel() {
 
       {error && <Notice tone="error">{error}</Notice>}
       {status.error_message && <Notice tone="error">{status.error_message}</Notice>}
+      {saveMessage && <Notice tone="info">{saveMessage}</Notice>}
 
       {status.stats && status.stats.original_textbooks > 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
@@ -141,6 +162,8 @@ export function IntegratePanel() {
           merge {status.stats.decisions_merge} · keep {status.stats.decisions_keep} · remove {status.stats.decisions_remove}
         </div>
       )}
+
+      <DecisionSankey stats={status.stats} decisions={decisions} />
 
       <div style={{ marginTop: 14 }}>
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>知识点进化总结</div>
@@ -171,7 +194,7 @@ export function IntegratePanel() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto" }}>
           {decisions.slice(0, 80).map((d) => (
-            <DecisionCard key={d.decision_id} decision={d} />
+            <DecisionCard key={d.decision_id} decision={d} onSave={updateDecision} />
           ))}
           {decisions.length > 80 && (
             <div style={{ color: "#94a3b8", fontSize: 12 }}>仅展示前 80 条，完整列表可通过 API 获取。</div>
@@ -182,7 +205,91 @@ export function IntegratePanel() {
   );
 }
 
-function DecisionCard({ decision }: { decision: IntegrationDecision }) {
+function DecisionSankey({ stats, decisions }: {
+  stats?: IntegrationStats;
+  decisions: IntegrationDecision[];
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<echarts.ECharts | null>(null);
+
+  useEffect(() => {
+    if (!ref.current || !stats || stats.original_nodes <= 0) return;
+    if (!chartRef.current) chartRef.current = echarts.init(ref.current);
+    const counts = decisions.reduce(
+      (acc, item) => ({ ...acc, [item.action]: (acc[item.action] || 0) + 1 }),
+      { merge: stats.decisions_merge, keep: stats.decisions_keep, remove: stats.decisions_remove },
+    );
+    chartRef.current.setOption({
+      tooltip: { trigger: "item" },
+      series: [{
+        type: "sankey",
+        top: 8,
+        bottom: 8,
+        left: 4,
+        right: 12,
+        nodeGap: 8,
+        nodeWidth: 10,
+        data: [
+          { name: "原始知识点" },
+          { name: "merge" },
+          { name: "keep" },
+          { name: "remove" },
+          { name: "整合保留" },
+          { name: "预算移除" },
+        ],
+        links: [
+          { source: "原始知识点", target: "merge", value: Math.max(1, counts.merge) },
+          { source: "原始知识点", target: "keep", value: Math.max(1, counts.keep) },
+          { source: "原始知识点", target: "remove", value: Math.max(1, counts.remove) },
+          { source: "merge", target: "整合保留", value: Math.max(1, counts.merge) },
+          { source: "keep", target: "整合保留", value: Math.max(1, counts.keep) },
+          { source: "remove", target: "预算移除", value: Math.max(1, counts.remove) },
+        ],
+        label: { fontSize: 11, color: "#475569" },
+        lineStyle: { color: "gradient", opacity: 0.35 },
+        itemStyle: { borderWidth: 0 },
+      }],
+    }, true);
+    const onResize = () => chartRef.current?.resize();
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      chartRef.current?.dispose();
+      chartRef.current = null;
+    };
+  }, [stats, decisions]);
+
+  if (!stats || stats.original_nodes <= 0) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>整合前后流向图</div>
+      <div ref={ref} style={{ height: 150, border: "1px solid #e5e7eb", borderRadius: 6, background: "#fff" }} />
+    </div>
+  );
+}
+
+function DecisionCard({ decision, onSave }: {
+  decision: IntegrationDecision;
+  onSave: (decisionId: string, action: IntegrationDecision["action"], reason: string) => Promise<void>;
+}) {
+  const [action, setAction] = useState<IntegrationDecision["action"]>(decision.action);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setAction(decision.action);
+    setReason("");
+  }, [decision.action, decision.reason]);
+
+  const save = useCallback(async () => {
+    setSaving(true);
+    try {
+      await onSave(decision.decision_id, action, reason.trim() || `教师手动调整为 ${ACTION_LABEL[action]}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [action, decision.decision_id, onSave, reason]);
+
   return (
     <div style={{ border: "1px solid #e5e7eb", borderRadius: 6, padding: 9, background: "#fff" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -199,6 +306,26 @@ function DecisionCard({ decision }: { decision: IntegrationDecision }) {
         </span>
       </div>
       <div style={{ marginTop: 7, fontSize: 12, lineHeight: 1.45 }}>{decision.reason}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "92px 1fr 54px", gap: 6, marginTop: 8 }}>
+        <select
+          value={action}
+          onChange={(e) => setAction(e.target.value as IntegrationDecision["action"])}
+          style={{ border: "1px solid #cbd5e1", borderRadius: 5, fontSize: 11, padding: "4px 5px" }}
+        >
+          <option value="merge">合并</option>
+          <option value="keep">保留</option>
+          <option value="remove">移除</option>
+        </select>
+        <input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="教师覆盖理由"
+          style={{ border: "1px solid #cbd5e1", borderRadius: 5, fontSize: 11, padding: "4px 6px" }}
+        />
+        <button onClick={save} disabled={saving} style={smallButtonStyle(saving)}>
+          {saving ? "..." : "保存"}
+        </button>
+      </div>
       {decision.source_refs && decision.source_refs.length > 0 && (
         <div style={{ marginTop: 6, fontSize: 11, color: "#64748b", wordBreak: "break-all" }}>
           {decision.source_refs.slice(0, 3).join(" · ")}
@@ -243,5 +370,16 @@ function buttonStyle(disabled: boolean): React.CSSProperties {
     marginLeft: "auto", padding: "5px 10px", border: 0, borderRadius: 5,
     background: disabled ? "#cbd5e1" : "#2563eb", color: "#fff",
     cursor: disabled ? "not-allowed" : "pointer", fontSize: 12,
+  };
+}
+
+function smallButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    border: 0,
+    borderRadius: 5,
+    background: disabled ? "#cbd5e1" : "#2563eb",
+    color: "#fff",
+    fontSize: 11,
+    cursor: disabled ? "not-allowed" : "pointer",
   };
 }

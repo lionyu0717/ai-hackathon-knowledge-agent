@@ -18,6 +18,7 @@ from .routers import graph as graph_router
 from .routers import integrate as integrate_router
 from .routers import parse as parse_router
 from .routers import rag as rag_router
+from .routers import reports as reports_router
 from .services import store
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -48,6 +49,7 @@ app.include_router(graph_router.router)
 app.include_router(integrate_router.router)
 app.include_router(rag_router.router)
 app.include_router(chat_router.router)
+app.include_router(reports_router.router)
 
 
 @app.get("/api/health")
