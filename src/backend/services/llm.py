@@ -1,7 +1,8 @@
 """LLM 客户端封装
 
-使用 ModelScope 推理 API（OpenAI 兼容协议），免费额度内调用 DeepSeek-V3.2。
-同一个 MODELSCOPE_ACCESS_TOKEN 同时用于 Studio 部署和 LLM 调用。
+使用 ModelScope 推理 API（OpenAI 兼容协议），优先调用平台免费额度模型。
+当免费 API-Inference 触发限流/额度限制时，可通过 “模型ID:外部提供方”
+继续走魔搭平台 Token 鉴权，例如 deepseek-ai/DeepSeek-V3.2:DeepSeek。
 
 接入方式：
     from .llm import get_client, chat_json, chat_text, MODEL
@@ -9,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from functools import lru_cache
 from typing import Any
 
@@ -16,6 +18,9 @@ from openai import OpenAI
 
 DEFAULT_BASE_URL = "https://api-inference.modelscope.cn/v1/"
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.2"
+DEFAULT_FALLBACK_MODELS = "deepseek-ai/DeepSeek-V3.2:DeepSeek,XiaomiMiMo/MiMo-V2.5-Pro"
+
+logger = logging.getLogger(__name__)
 
 
 def _api_key() -> str:
@@ -40,6 +45,29 @@ def get_client() -> OpenAI:
 MODEL = os.getenv("LLM_MODEL", DEFAULT_MODEL)
 
 
+def _models_to_try() -> list[str]:
+    fallbacks = [
+        item.strip()
+        for item in os.getenv("LLM_FALLBACK_MODELS", DEFAULT_FALLBACK_MODELS).split(",")
+        if item.strip()
+    ]
+    out: list[str] = []
+    for model in [MODEL, *fallbacks]:
+        if model not in out:
+            out.append(model)
+    return out
+
+
+def _should_try_fallback(exc: Exception) -> bool:
+    text = str(exc).lower()
+    if "未配置" in str(exc) or "access_token" in text:
+        return False
+    return any(key in text for key in (
+        "429", "rate limit", "quota", "exceeded", "unavailable",
+        "not found", "model", "temporarily",
+    ))
+
+
 def chat_text(
     user: str,
     system: str | None = None,
@@ -53,13 +81,24 @@ def chat_text(
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": user})
 
-    resp = get_client().chat.completions.create(
-        model=MODEL,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    return (resp.choices[0].message.content or "").strip()
+    last_exc: Exception | None = None
+    for idx, model in enumerate(_models_to_try()):
+        try:
+            resp = get_client().chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return (resp.choices[0].message.content or "").strip()
+        except Exception as exc:
+            last_exc = exc
+            if idx >= len(_models_to_try()) - 1 or not _should_try_fallback(exc):
+                raise
+            logger.warning("[llm] model %s failed, trying fallback: %s", model, exc)
+
+    assert last_exc is not None
+    raise last_exc
 
 
 def chat_json(

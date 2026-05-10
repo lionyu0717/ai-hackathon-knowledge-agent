@@ -105,7 +105,7 @@ def extract_chapter(
         raw = chat_json(prompt, EXTRACTION_SYSTEM, max_tokens=2500, temperature=0.15)
     except Exception as e:
         logger.warning(f"[extract] LLM call failed for {chapter.chapter_id}: {e}")
-        return ExtractionResult([], [], {"error": str(e)})
+        return _heuristic_extract_chapter(textbook_id, chapter, str(e))
 
     if not isinstance(raw, dict):
         logger.warning(f"[extract] unexpected JSON shape for {chapter.chapter_id}: {type(raw)}")
@@ -162,6 +162,128 @@ def extract_chapter(
         ))
 
     return ExtractionResult(nodes, edges, raw)
+
+
+def _heuristic_extract_chapter(textbook_id: str, chapter: Chapter, error: str) -> ExtractionResult:
+    """LLM 额度/限流失败时的保底抽取。
+
+    该分支不追求语义完美，只保证演示环境仍能产出可视化节点和基础关系。
+    """
+    candidates = _candidate_terms(chapter)
+    nodes: list[KnowledgeNode] = []
+    seen: set[str] = set()
+    for name in candidates:
+        if name in seen:
+            continue
+        seen.add(name)
+        nodes.append(KnowledgeNode(
+            id=_node_id(textbook_id, chapter.chapter_id, name),
+            name=name,
+            definition=_sentence_for_term(chapter.content, name),
+            category="启发式概念",
+            textbook_id=textbook_id,
+            chapter_id=chapter.chapter_id,
+            chapter_title=chapter.title,
+            page=chapter.page_start,
+        ))
+        if len(nodes) >= 10:
+            break
+
+    edges: list[KnowledgeEdge] = []
+    if len(nodes) >= 2:
+        root = nodes[0]
+        for child in nodes[1:6]:
+            edges.append(KnowledgeEdge(
+                source=root.id,
+                target=child.id,
+                relation_type="contains",
+                description=f"{root.name} 与 {child.name} 同属本章核心内容",
+            ))
+        for left, right in zip(nodes[1:5], nodes[2:6]):
+            edges.append(KnowledgeEdge(
+                source=left.id,
+                target=right.id,
+                relation_type="parallel",
+                description=f"{left.name} 与 {right.name} 是本章相邻知识点",
+            ))
+    return ExtractionResult(nodes, edges, {"error": error, "fallback": "heuristic"})
+
+
+def _candidate_terms(chapter: Chapter) -> list[str]:
+    text = chapter.content
+    out: list[str] = []
+
+    title = re.sub(r"^第\s*[一二三四五六七八九十百零\d]+\s*章\s*", "", chapter.title).strip()
+    if _valid_term(title):
+        out.append(title)
+
+    # 医学高频短语优先，避免 LLM 不可用时被标题编号或半截句子挤出候选池。
+    known_terms = [
+        "内环境", "稳态", "细胞", "器官", "系统", "血液", "缺氧", "水肿",
+        "炎症", "休克", "发热", "酸中毒", "碱中毒", "心力衰竭", "呼吸衰竭",
+        "肾功能衰竭", "肝功能衰竭", "免疫", "肿瘤", "凋亡", "心脏", "肾脏",
+        "肺", "肝脏", "坏死", "萎缩", "肥大", "增生", "化生",
+    ]
+    for term in known_terms:
+        if term in text:
+            out.append(term)
+
+    heading_re = re.compile(r"(?m)^\s*#{1,4}\s*([一二三四五六七八九十百零\d、.\s]*[\u4e00-\u9fa5A-Za-z]{2,24})\s*$")
+    for m in heading_re.finditer(text[:20000]):
+        term = _clean_term(m.group(1))
+        if _valid_term(term):
+            out.append(term)
+
+    definition_re = re.compile(r"([\u4e00-\u9fa5A-Za-z0-9]{2,12})(?:是指|是|指|为|包括|可分为|称为)")
+    for m in definition_re.finditer(text[:25000]):
+        term = _clean_term(m.group(1))
+        if _valid_term(term):
+            out.append(term)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in out:
+        key = re.sub(r"\s+", "", term)
+        if key and key not in seen:
+            seen.add(key)
+            deduped.append(term)
+    return deduped or [chapter.title[:12] or "核心概念"]
+
+
+def _clean_term(term: str) -> str:
+    term = re.sub(r"^[\d一二三四五六七八九十百零、.\s]+", "", term)
+    term = re.sub(r"[：:，,。；;（）()【】\[\]《》<>].*$", "", term)
+    return re.sub(r"\s+", "", term).strip()
+
+
+def _valid_term(term: str) -> bool:
+    if not 2 <= len(term) <= 12:
+        return False
+    if re.search(r"[，。？！；：（）()【】\[\]『』]", term):
+        return False
+    bad = {
+        "本章", "问题", "复习题", "目录", "参考文献", "答案", "小结", "学习目标",
+        "主要", "尤其", "特别", "目前认", "值得注意的", "此外", "因此", "由于",
+        "一般", "这些", "这种", "临床", "患者", "表现", "发生", "可以", "作为",
+    }
+    if term in bad or term.endswith(("的", "了", "认", "作", "为")):
+        return False
+    if any(term.startswith(prefix) for prefix in ("主要", "尤其", "特别", "目前", "值得")):
+        return False
+    return term not in bad and not term.startswith(("图", "表"))
+
+
+def _sentence_for_term(text: str, term: str) -> str:
+    compact = re.sub(r"\s+", " ", text)
+    pos = compact.find(term)
+    if pos < 0:
+        return f"{term} 是本章教材文本中识别出的核心知识点。"
+    start = max(0, compact.rfind("。", 0, pos) + 1)
+    end = compact.find("。", pos)
+    if end < 0:
+        end = min(len(compact), pos + 180)
+    sentence = compact[start:end + 1].strip()
+    return sentence[:260] or f"{term} 是本章教材文本中识别出的核心知识点。"
 
 
 def extract_textbook(

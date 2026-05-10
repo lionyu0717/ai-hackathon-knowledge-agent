@@ -169,7 +169,7 @@
 | 后端 | FastAPI + uvicorn | 自动 OpenAPI doc 可截图入文档 |
 | 前端 | React + Vite + TypeScript + TailwindCSS | shadcn/ui 按需 |
 | 图谱可视化 | ECharts relation graph | 力导向 + 缩放 + 拖拽 + 点击全开箱 |
-| **LLM** | **DeepSeek-V4 API**（OpenAI 兼容，base_url=`https://api.deepseek.com/v1`，model=`deepseek-chat`） | 中文性价比最佳 |
+| **LLM** | **ModelScope API Inference**（OpenAI 兼容，`MODELSCOPE_ACCESS_TOKEN` 鉴权） | 优先免费额度模型；额度/限流时使用 `模型ID:外部提供方`，如 `deepseek-ai/DeepSeek-V3.2:DeepSeek` |
 | Embedding | BGE-small-zh-v1.5（sentence-transformers 本地） | 100MB，魔搭有 GPU 加速 |
 | 向量库 | ChromaDB（持久化磁盘） | 内嵌 Python 零部署 |
 | BM25 | jieba + rank_bm25 | 中文分词 |
@@ -267,7 +267,7 @@
    - **预算控制**：累加 chunk 字数 ≤ `0.28 × original_total`，超出按 importance 截断 → action=remove
 4. 接口：`POST /api/integrate/run`、`GET /api/integrate/decisions`、`GET /api/integrate/stats`
 5. 前端：「整合操作」Tab 显示压缩比 + 决策列表
-6. **本地验证**：上传 ≥ 2 本教材 → 整合 → 压缩比 ≤ 30%
+6. **本地验证**：上传 ≥ 2 本教材 → 整合 → 压缩比 ≤ 30%；最终 Phase 7 必须基于 7 本教材重跑整合统计
 
 ### Phase 4（2:15–3:00）RAG + Benchmark ★
 
@@ -335,9 +335,10 @@
 2. push 到 GitHub → 触发魔搭重 build
 3. 端到端冒烟测试：
    - [ ] 公网 URL 可打开
-   - [ ] 上传 2 本教材成功
-   - [ ] 图谱渲染、点击有详情
-   - [ ] 触发整合，压缩比 ≤ 30%
+   - [ ] 上传 / 解析 7 本教材成功（02 体积最大时至少完成冒烟解析）
+   - [ ] 为 7 本教材构建图谱；若 API 限流，启用 ModelScope 外部 provider 或启发式兜底抽取
+   - [ ] 图谱渲染、点击有详情，并能区分 7 本教材来源
+   - [ ] 触发 7 本教材整合，压缩比 ≤ 30%
    - [ ] RAG 提问获得带引用回答
    - [ ] 对话能改决策
 4. README 加部署链接 + 截图

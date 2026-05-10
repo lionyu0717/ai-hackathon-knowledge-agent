@@ -8,6 +8,7 @@ GET  /api/graph/{textbook_id}/progress  查抽取进度
 from __future__ import annotations
 
 import logging
+import re
 from threading import Lock
 from typing import Any
 
@@ -156,6 +157,10 @@ def get_full_graph() -> dict:
 
     textbooks = store.list_textbooks()
     tb_titles = {t.textbook_id: t.title for t in textbooks}
+    freq_by_name: dict[str, int] = {}
+    for n in nodes:
+        key = re.sub(r"\s+", "", n.name).lower()
+        freq_by_name[key] = freq_by_name.get(key, 0) + 1
 
     return {
         "nodes": [
@@ -164,7 +169,9 @@ def get_full_graph() -> dict:
                 "category": n.category, "chapter": n.chapter_title,
                 "page": n.page, "textbook_id": n.textbook_id,
                 "textbook_title": tb_titles.get(n.textbook_id, ""),
-                "value": degree.get(n.id, 0) + 1,
+                "frequency": freq_by_name.get(re.sub(r"\s+", "", n.name).lower(), 1),
+                "value": max(degree.get(n.id, 0) + 1,
+                             freq_by_name.get(re.sub(r"\s+", "", n.name).lower(), 1) * 3),
             } for n in nodes
         ],
         "edges": [

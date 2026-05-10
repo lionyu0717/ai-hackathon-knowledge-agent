@@ -60,7 +60,7 @@ cd ai-hackathon-knowledge-agent
 
 # 2. 配置环境变量
 cp .env.example .env
-# 编辑 .env，填入 DEEPSEEK_API_KEY
+# 编辑 .env，填入 MODELSCOPE_ACCESS_TOKEN
 
 # 3. 后端
 python3 -m venv .venv
@@ -79,7 +79,7 @@ npm run dev
 
 ```bash
 docker build -t knowledge-agent .
-docker run -p 7860:7860 -e DEEPSEEK_API_KEY=sk-xxx knowledge-agent
+docker run -p 7860:7860 -e MODELSCOPE_ACCESS_TOKEN=ms-xxx knowledge-agent
 # 访问 http://localhost:7860
 ```
 
@@ -90,7 +90,9 @@ docker run -p 7860:7860 -e DEEPSEEK_API_KEY=sk-xxx knowledge-agent
 1. 在 [https://modelscope.cn/studios](https://modelscope.cn/studios) 创建 Studio
 2. SDK 选择 **Docker**，关联本 GitHub 仓库
 3. 在 Settings → Secrets 中添加：
-   - `DEEPSEEK_API_KEY`：你的 DeepSeek API key
+   - `MODELSCOPE_ACCESS_TOKEN`：你的魔搭访问令牌
+   - `LLM_MODEL`：默认 `deepseek-ai/DeepSeek-V3.2`
+   - `LLM_FALLBACK_MODELS`：可选，例如 `deepseek-ai/DeepSeek-V3.2:DeepSeek,XiaomiMiMo/MiMo-V2.5-Pro`
 4. 构建完成后，Studio URL 即为公网部署链接
 
 ## 项目结构
@@ -125,7 +127,7 @@ docker run -p 7860:7860 -e DEEPSEEK_API_KEY=sk-xxx knowledge-agent
 
 | 决策 | 选择 | 理由 |
 |------|------|------|
-| LLM | DeepSeek-V4（OpenAI 兼容） | 中文性价比最佳，JSON mode 稳定 |
+| LLM | ModelScope API Inference（OpenAI 兼容） | 优先免费额度模型；限流时支持 `模型ID:外部提供方` 兜底 |
 | 嵌入 | BGE-small-zh-v1.5 本地推理 | 100MB，免 API 延迟与计费 |
 | 向量库 | ChromaDB | 内嵌 Python，零部署 |
 | 检索 | 向量 + BM25 → RRF 融合 → top-5 | 论文级 baseline，免参数调优 |

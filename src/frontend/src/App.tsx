@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { UploadPanel, type TextbookSummary } from "./components/UploadPanel";
 import { GraphView } from "./components/GraphView";
+import { IntegratePanel } from "./components/IntegratePanel";
 import "./App.css";
 
-type CenterView = "graph" | "chapters";
+type CenterView = "global" | "graph" | "chapters";
 
 export default function App() {
   const [selected, setSelected] = useState<TextbookSummary | null>(null);
-  const [view, setView] = useState<CenterView>("graph");
+  const [view, setView] = useState<CenterView>("global");
 
   return (
     <div
@@ -35,16 +36,40 @@ export default function App() {
       >
         <div style={{ fontWeight: 700, fontSize: 16 }}>📚 学科知识整合智能体</div>
         <div style={{ fontSize: 12, color: "#cbd5e1" }}>
-          AI 全栈极速黑客松 · Phase 1
+          AI 全栈极速黑客松 · Phase 3
         </div>
       </header>
 
       {/* Left: upload */}
-      <UploadPanel onSelect={setSelected} selectedId={selected?.textbook_id || null} />
+      <UploadPanel
+        onSelect={(tb) => {
+          setSelected(tb);
+          setView("graph");
+        }}
+        selectedId={selected?.textbook_id || null}
+      />
 
       {/* Center: graph (默认) / chapters */}
       <main style={{ background: "#f8fafc", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        {selected ? (
+        {view === "global" ? (
+          <>
+            <div style={{ padding: "0.6rem 1rem", borderBottom: "1px solid #e5e7eb",
+              background: "#fff", display: "flex", alignItems: "center", gap: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 16 }}>跨教材知识图谱</h2>
+              <div style={{ color: "#64748b", fontSize: 12 }}>
+                节点按教材来源上色，大小综合出现频次、连接度与点击频次
+              </div>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                <ViewBtn active={true} onClick={() => setView("global")}>🌐 全局图谱</ViewBtn>
+                <ViewBtn active={false} disabled={!selected} onClick={() => selected && setView("graph")}>📊 单本图谱</ViewBtn>
+                <ViewBtn active={false} disabled={!selected} onClick={() => selected && setView("chapters")}>📖 章节</ViewBtn>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <GraphView textbookId="all" />
+            </div>
+          </>
+        ) : selected ? (
           <>
             <div style={{ padding: "0.6rem 1rem", borderBottom: "1px solid #e5e7eb",
               background: "#fff", display: "flex", alignItems: "center", gap: 16 }}>
@@ -54,6 +79,7 @@ export default function App() {
                 {selected.total_chars.toLocaleString()} 字
               </div>
               <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                <ViewBtn active={false} onClick={() => setView("global")}>🌐 全局图谱</ViewBtn>
                 <ViewBtn active={view === "graph"} onClick={() => setView("graph")}>📊 图谱</ViewBtn>
                 <ViewBtn active={view === "chapters"} onClick={() => setView("chapters")}>📖 章节</ViewBtn>
               </div>
@@ -75,31 +101,22 @@ export default function App() {
 
       {/* Right: features panel placeholder */}
       <aside style={{ borderLeft: "1px solid #e5e7eb", padding: "1rem", overflowY: "auto" }}>
-        <h3 style={{ marginTop: 0 }}>🛠 功能面板</h3>
-        <div style={{ color: "#94a3b8", fontSize: 13 }}>
-          Phase 2-5 即将上线：
-          <ul style={{ paddingLeft: 18, lineHeight: 1.8 }}>
-            <li>知识图谱（ECharts）</li>
-            <li>跨教材整合</li>
-            <li>RAG 问答</li>
-            <li>对话 Agent</li>
-          </ul>
-        </div>
+        <IntegratePanel />
       </aside>
     </div>
   );
 }
 
-function ViewBtn({ active, onClick, children }: {
-  active: boolean; onClick: () => void; children: React.ReactNode;
+function ViewBtn({ active, disabled = false, onClick, children }: {
+  active: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode;
 }) {
   return (
-    <button onClick={onClick} style={{
+    <button disabled={disabled} onClick={onClick} style={{
       padding: "4px 10px", fontSize: 12, border: "1px solid",
       borderColor: active ? "#2563eb" : "#cbd5e1",
-      background: active ? "#2563eb" : "#fff",
-      color: active ? "#fff" : "#475569",
-      borderRadius: 4, cursor: "pointer",
+      background: disabled ? "#f1f5f9" : active ? "#2563eb" : "#fff",
+      color: disabled ? "#94a3b8" : active ? "#fff" : "#475569",
+      borderRadius: 4, cursor: disabled ? "not-allowed" : "pointer",
     }}>{children}</button>
   );
 }

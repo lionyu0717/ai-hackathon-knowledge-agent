@@ -103,6 +103,16 @@ def list_chapters(textbook_id: str) -> list[Chapter]:
     return chs
 
 
+@router.get("/textbooks/{textbook_id}/chapters/{chapter_id}", response_model=Chapter)
+def get_chapter(textbook_id: str, chapter_id: str) -> Chapter:
+    ch = store.get_chapter(textbook_id, chapter_id)
+    if not ch:
+        if not store.get_textbook(textbook_id):
+            raise HTTPException(404, "textbook not found")
+        raise HTTPException(404, "chapter not found")
+    return ch
+
+
 @router.delete("/textbooks/{textbook_id}")
 def delete_textbook(textbook_id: str) -> dict:
     store.delete_textbook(textbook_id)
