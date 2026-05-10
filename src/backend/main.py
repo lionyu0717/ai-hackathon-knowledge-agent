@@ -13,6 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
+from .routers import parse as parse_router
+from .services import store
+
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
@@ -22,6 +25,11 @@ app = FastAPI(
     description="AI 全栈极速黑客松 · 知识图谱构建 + 跨教材整合 + RAG 问答",
 )
 
+
+@app.on_event("startup")
+def _on_startup() -> None:
+    store.init_db()
+
 # 开发期允许全部跨域；上线时（前端被打包到 static/）实际同源，CORS 不生效也无影响
 app.add_middleware(
     CORSMiddleware,
@@ -29,6 +37,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(parse_router.router)
 
 
 @app.get("/api/health")

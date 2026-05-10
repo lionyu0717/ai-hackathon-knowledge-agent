@@ -1,74 +1,163 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { UploadPanel, type TextbookSummary } from "./components/UploadPanel";
 import "./App.css";
 
-type HealthResp = {
-  ok: boolean;
-  service: string;
-  version: string;
-  llm_key_configured: boolean;
-};
-
-function App() {
-  const [health, setHealth] = useState<HealthResp | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // 同源请求：开发期由 vite proxy 转发，生产期由 FastAPI StaticFiles 同源 serve
-    fetch("/api/health")
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(setHealth)
-      .catch((e) => setError(String(e)));
-  }, []);
+export default function App() {
+  const [selected, setSelected] = useState<TextbookSummary | null>(null);
 
   return (
     <div
       style={{
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        padding: "2rem",
-        maxWidth: 720,
-        margin: "0 auto",
+        display: "grid",
+        gridTemplateColumns: "320px 1fr 380px",
+        gridTemplateRows: "48px 1fr",
+        height: "100vh",
+        fontFamily:
+          'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
+        color: "#1e293b",
       }}
     >
-      <h1>学科知识整合智能体</h1>
-      <p style={{ color: "#666" }}>
-        AI 全栈极速黑客松 · Phase 0 部署回路验证
-      </p>
-
-      <div
+      {/* Header */}
+      <header
         style={{
-          marginTop: "1.5rem",
-          padding: "1rem 1.25rem",
-          border: "1px solid #ddd",
-          borderRadius: 8,
-          background: "#fafafa",
+          gridColumn: "1 / span 3",
+          background: "#1e293b",
+          color: "#fff",
+          padding: "0 1rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.75rem",
         }}
       >
-        <h3 style={{ margin: "0 0 0.5rem" }}>后端连通性</h3>
-        {error && (
-          <div style={{ color: "#c33" }}>
-            ❌ 调用 <code>/api/health</code> 失败：{error}
-          </div>
-        )}
-        {!error && !health && <div>⏳ 加载中...</div>}
-        {health && (
-          <div>
-            <div>✅ 服务：{health.service} v{health.version}</div>
-            <div>
-              🔑 DeepSeek API key：
-              {health.llm_key_configured ? "已配置" : "未配置（部署后需在魔搭 Secrets 中设置）"}
-            </div>
-          </div>
-        )}
-      </div>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>📚 学科知识整合智能体</div>
+        <div style={{ fontSize: 12, color: "#cbd5e1" }}>
+          AI 全栈极速黑客松 · Phase 1
+        </div>
+      </header>
 
-      <div style={{ marginTop: "1.5rem", color: "#888", fontSize: "0.9rem" }}>
-        <strong>下一步</strong>：进入 Phase 1，加上传组件、知识图谱、RAG 面板、对话面板。
-      </div>
+      {/* Left: upload */}
+      <UploadPanel onSelect={setSelected} selectedId={selected?.textbook_id || null} />
+
+      {/* Center: graph placeholder */}
+      <main style={{ background: "#f1f5f9", padding: "1rem", overflowY: "auto" }}>
+        {selected ? (
+          <div>
+            <h2 style={{ marginTop: 0 }}>{selected.title}</h2>
+            <div style={{ color: "#64748b", marginBottom: "1rem" }}>
+              {selected.filename} · {selected.total_pages} 页 · {selected.chapter_count} 章 ·{" "}
+              {selected.total_chars.toLocaleString()} 字
+            </div>
+            <ChapterList textbookId={selected.textbook_id} />
+          </div>
+        ) : (
+          <EmptyCenter />
+        )}
+      </main>
+
+      {/* Right: features panel placeholder */}
+      <aside style={{ borderLeft: "1px solid #e5e7eb", padding: "1rem", overflowY: "auto" }}>
+        <h3 style={{ marginTop: 0 }}>🛠 功能面板</h3>
+        <div style={{ color: "#94a3b8", fontSize: 13 }}>
+          Phase 2-5 即将上线：
+          <ul style={{ paddingLeft: 18, lineHeight: 1.8 }}>
+            <li>知识图谱（ECharts）</li>
+            <li>跨教材整合</li>
+            <li>RAG 问答</li>
+            <li>对话 Agent</li>
+          </ul>
+        </div>
+      </aside>
     </div>
   );
 }
 
-export default App;
+function EmptyCenter() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100%",
+        color: "#94a3b8",
+      }}
+    >
+      <div style={{ fontSize: 48 }}>👈</div>
+      <div style={{ marginTop: 8 }}>左侧上传一本教材开始</div>
+    </div>
+  );
+}
+
+type Chapter = {
+  chapter_id: string;
+  title: string;
+  page_start: number;
+  page_end: number;
+  char_count: number;
+};
+
+function ChapterList({ textbookId }: { textbookId: string }) {
+  const [chapters, setChapters] = useState<Chapter[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (chapters === null && !error) {
+    fetch(`/api/textbooks/${textbookId}/chapters`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
+      .then(setChapters)
+      .catch((e) => setError(String(e)));
+  }
+
+  if (error) return <div style={{ color: "#c33" }}>加载章节失败：{error}</div>;
+  if (!chapters) return <div>加载章节中...</div>;
+
+  return (
+    <div>
+      <h3>章节结构（{chapters.length}）</h3>
+      <table
+        style={{
+          width: "100%",
+          fontSize: 13,
+          background: "#fff",
+          border: "1px solid #e5e7eb",
+          borderCollapse: "collapse",
+        }}
+      >
+        <thead>
+          <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+            <th style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb" }}>编号</th>
+            <th style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb" }}>标题</th>
+            <th style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb" }}>页码</th>
+            <th style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", textAlign: "right" }}>
+              字数
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {chapters.map((c) => (
+            <tr key={c.chapter_id}>
+              <td style={{ padding: "6px 12px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>
+                {c.chapter_id}
+              </td>
+              <td style={{ padding: "6px 12px", borderBottom: "1px solid #f1f5f9" }}>{c.title}</td>
+              <td style={{ padding: "6px 12px", borderBottom: "1px solid #f1f5f9", color: "#64748b" }}>
+                {c.page_start}-{c.page_end}
+              </td>
+              <td
+                style={{
+                  padding: "6px 12px",
+                  borderBottom: "1px solid #f1f5f9",
+                  textAlign: "right",
+                  color: "#64748b",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {c.char_count.toLocaleString()}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

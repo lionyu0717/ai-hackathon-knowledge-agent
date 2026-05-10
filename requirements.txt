@@ -15,6 +15,7 @@ openpyxl==3.1.5
 openai==1.54.3
 
 # ===== 嵌入模型 + 向量库 =====
+# torch 在 Dockerfile 里单独装 CPU-only 版本（避免拉 CUDA wheel ~2GB）
 sentence-transformers==3.2.1
 chromadb==0.5.15
 numpy==1.26.4

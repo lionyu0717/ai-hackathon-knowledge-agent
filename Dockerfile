@@ -40,8 +40,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 依赖
+# 关键优化：先装 CPU-only torch（~200MB vs CUDA 版 ~2GB），再装其他
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple \
+        torch==2.5.1 \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip cache purge \
+    && find /usr/local/lib/python3.11/site-packages -name "tests" -type d -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python3.11/site-packages -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 # 后端代码
 COPY src/backend/ ./src/backend/
