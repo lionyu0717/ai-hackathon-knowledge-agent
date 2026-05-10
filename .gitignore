@@ -1,0 +1,63 @@
+# ============ 教材数据 / 大文件（赛题硬性要求：不能上传 PDF） ============
+*.pdf
+*.PDF
+*.zip
+*.rar
+data/textbooks/
+data/db/
+data/index/
+data/models/
+
+# ============ 环境与密钥 ============
+.env
+.env.local
+.env.*.local
+*.key
+
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ============ Node / 前端 ============
+node_modules/
+dist/
+build/
+.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 前端 build 产物（CI/部署时再生成，不进 repo）
+src/backend/static/
+src/frontend/dist/
+
+# ============ IDE / OS ============
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ============ 缓存与中间文件 ============
+.cache/
+*.pkl
+*.pickle
+benchmark/results-*.md
+report/精华教材.md  # 由系统生成，体积大
+
+# ============ 例外：保留赛题文档作为参考（如果需要本地保留则保留，否则也 ignore） ============
+# 当前 .gitignore 把 *.pdf 全部排除，包括赛题文档.pdf
+# 这是符合赛题要求的（教材 PDF 不上传，赛题文档评委也有）
