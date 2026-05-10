@@ -8,6 +8,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -59,9 +62,10 @@ def health() -> dict:
         "ok": True,
         "service": "knowledge-agent",
         "version": app.version,
-        "llm_provider": "modelscope",
-        "llm_model": os.getenv("LLM_MODEL", "deepseek-ai/DeepSeek-V3.2"),
-        "llm_key_configured": bool(os.getenv("MODELSCOPE_ACCESS_TOKEN")),
+        "llm_base_url": os.getenv("LLM_BASE_URL", ""),
+        "llm_model": os.getenv("LLM_MODEL", "deepseek-chat"),
+        "deepseek_key_configured": bool(os.getenv("DEEPSEEK_API_KEY")),
+        "modelscope_key_configured": bool(os.getenv("MODELSCOPE_ACCESS_TOKEN")),
     }
 
 

@@ -17,27 +17,29 @@ from typing import Any
 from openai import OpenAI
 
 DEFAULT_BASE_URL = "https://api-inference.modelscope.cn/v1/"
-DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.2"
-DEFAULT_FALLBACK_MODELS = "deepseek-ai/DeepSeek-V3.2:DeepSeek,XiaomiMiMo/MiMo-V2.5-Pro"
+DEFAULT_MODEL = "Qwen/Qwen3-235B-A22B"
+DEFAULT_FALLBACK_MODELS = "Qwen/Qwen3-30B-A3B,deepseek-ai/DeepSeek-V3.2"
 
 logger = logging.getLogger(__name__)
 
 
 def _api_key() -> str:
-    key = os.getenv("MODELSCOPE_ACCESS_TOKEN")
+    key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("MODELSCOPE_ACCESS_TOKEN")
     if not key:
         raise RuntimeError(
-            "MODELSCOPE_ACCESS_TOKEN 未配置。本地：在 .env 设置；"
-            "魔搭部署：在 Studio Settings → Secrets 添加。"
+            "DEEPSEEK_API_KEY 或 MODELSCOPE_ACCESS_TOKEN 均未配置。"
+            "本地：在 .env 设置；魔搭部署：在 Studio Settings → Secrets 添加。"
         )
     return key
 
 
 @lru_cache(maxsize=1)
 def get_client() -> OpenAI:
+    base_url = os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL)
+    logger.info("[llm] connecting to %s with model %s", base_url, MODEL)
     return OpenAI(
         api_key=_api_key(),
-        base_url=os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
+        base_url=base_url,
         timeout=120.0,
     )
 
@@ -90,7 +92,12 @@ def chat_text(
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            return (resp.choices[0].message.content or "").strip()
+            if not resp.choices:
+                raise RuntimeError(f"模型 {model} 返回空 choices（可能额度用尽或模型不可用）")
+            content = resp.choices[0].message.content or ""
+            if not content.strip():
+                raise RuntimeError(f"模型 {model} 返回空内容")
+            return content.strip()
         except Exception as exc:
             last_exc = exc
             if idx >= len(_models_to_try()) - 1 or not _should_try_fallback(exc):
@@ -112,7 +119,7 @@ def chat_json(
     import json
     import re
 
-    sys_msg = (system or "") + "\n严格输出合法 JSON，禁止包裹任何解释、注释或代码块标记。"
+    sys_msg = (system or "") + "\n严格输出合法 JSON，禁止包裹任何解释、注释或代码块标记。/no_think"
     raw = chat_text(user, sys_msg.strip(), temperature=temperature, max_tokens=max_tokens)
 
     # 去掉常见 ```json ... ``` 包装

@@ -98,16 +98,41 @@ def get_graph(textbook_id: str) -> dict:
     if not tb:
         raise HTTPException(404, "textbook not found")
 
-    nodes = store.list_nodes(textbook_id)
+    raw_nodes = store.list_nodes(textbook_id)
     edges = store.list_edges()
-    node_ids = {n.id for n in nodes}
-    edges = [e for e in edges if e.source in node_ids and e.target in node_ids]
 
-    # 计算节点度数（用作 value，前端映射 size）
-    degree: dict[str, int] = {n.id: 0 for n in nodes}
+    # 同名知识点去重：保留定义最长的那个，其余的 id 映射到保留的 id
+    dedup_map: dict[str, str] = {}  # old_id → canonical_id
+    by_name: dict[str, list] = {}
+    for n in raw_nodes:
+        key = re.sub(r"\s+", "", n.name).lower()
+        by_name.setdefault(key, []).append(n)
+    nodes = []
+    for group in by_name.values():
+        best = max(group, key=lambda n: len(n.definition or ""))
+        nodes.append(best)
+        for n in group:
+            dedup_map[n.id] = best.id
+
+    node_ids = {n.id for n in nodes}
+    deduped_edges = []
+    seen_edges = set()
     for e in edges:
-        degree[e.source] = degree.get(e.source, 0) + 1
-        degree[e.target] = degree.get(e.target, 0) + 1
+        src = dedup_map.get(e.source, e.source)
+        tgt = dedup_map.get(e.target, e.target)
+        if src not in node_ids or tgt not in node_ids or src == tgt:
+            continue
+        edge_key = (src, tgt, e.relation_type)
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
+        deduped_edges.append((src, tgt, e.relation_type, e.description))
+    edges = deduped_edges
+
+    degree: dict[str, int] = {n.id: 0 for n in nodes}
+    for src, tgt, _, _ in edges:
+        degree[src] = degree.get(src, 0) + 1
+        degree[tgt] = degree.get(tgt, 0) + 1
 
     return {
         "textbook": {"id": tb.textbook_id, "title": tb.title, "filename": tb.filename},
@@ -126,11 +151,11 @@ def get_graph(textbook_id: str) -> dict:
         ],
         "edges": [
             {
-                "source": e.source,
-                "target": e.target,
-                "relation_type": e.relation_type,
-                "description": e.description,
-            } for e in edges
+                "source": src,
+                "target": tgt,
+                "relation_type": rel,
+                "description": desc,
+            } for src, tgt, rel, desc in edges
         ],
         "stats": {
             "node_count": len(nodes),
@@ -145,15 +170,40 @@ def get_full_graph() -> dict:
     """合并所有教材的图（用于整合后展示）。
     每个节点带 textbook_id，前端按 textbook 上色。
     """
-    nodes = store.list_nodes()
-    edges = store.list_edges()
+    raw_nodes = store.list_nodes()
+    raw_edges = store.list_edges()
+
+    # 同教材内同名去重
+    dedup_map: dict[str, str] = {}
+    by_key: dict[str, list] = {}
+    for n in raw_nodes:
+        key = f"{n.textbook_id}:{re.sub(r'\s+', '', n.name).lower()}"
+        by_key.setdefault(key, []).append(n)
+    nodes = []
+    for group in by_key.values():
+        best = max(group, key=lambda n: len(n.definition or ""))
+        nodes.append(best)
+        for n in group:
+            dedup_map[n.id] = best.id
+
     node_ids = {n.id for n in nodes}
-    edges = [e for e in edges if e.source in node_ids and e.target in node_ids]
+    seen_edges = set()
+    edges = []
+    for e in raw_edges:
+        src = dedup_map.get(e.source, e.source)
+        tgt = dedup_map.get(e.target, e.target)
+        if src not in node_ids or tgt not in node_ids or src == tgt:
+            continue
+        edge_key = (src, tgt, e.relation_type)
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
+        edges.append({"source": src, "target": tgt, "relation_type": e.relation_type, "description": e.description})
 
     degree: dict[str, int] = {n.id: 0 for n in nodes}
     for e in edges:
-        degree[e.source] = degree.get(e.source, 0) + 1
-        degree[e.target] = degree.get(e.target, 0) + 1
+        degree[e["source"]] = degree.get(e["source"], 0) + 1
+        degree[e["target"]] = degree.get(e["target"], 0) + 1
 
     textbooks = store.list_textbooks()
     tb_titles = {t.textbook_id: t.title for t in textbooks}
@@ -174,12 +224,7 @@ def get_full_graph() -> dict:
                              freq_by_name.get(re.sub(r"\s+", "", n.name).lower(), 1) * 3),
             } for n in nodes
         ],
-        "edges": [
-            {
-                "source": e.source, "target": e.target,
-                "relation_type": e.relation_type, "description": e.description,
-            } for e in edges
-        ],
+        "edges": edges,
         "stats": {
             "node_count": len(nodes),
             "edge_count": len(edges),
