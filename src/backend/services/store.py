@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Iterator
 
 from ..models.schemas import (
-    Chapter, IntegrationDecision, IntegrationStats, KnowledgeEdge, KnowledgeNode,
-    ParseStatus, Textbook, TextbookSummary,
+    Chapter, ChatMessage, IntegrationDecision, IntegrationStats, KnowledgeEdge,
+    KnowledgeNode, ParseStatus, Textbook, TextbookSummary,
 )
 
 DB_PATH = Path(os.getenv("SQLITE_PATH", "data/db/app.db"))
@@ -105,6 +105,40 @@ CREATE TABLE IF NOT EXISTS integration_decisions (
 
 CREATE INDEX IF NOT EXISTS idx_integration_decisions_run ON integration_decisions(run_id);
 CREATE INDEX IF NOT EXISTS idx_integration_runs_updated ON integration_runs(updated_at);
+
+CREATE TABLE IF NOT EXISTS rag_chunks (
+    chunk_id       TEXT PRIMARY KEY,
+    textbook_id    TEXT NOT NULL,
+    textbook_title TEXT NOT NULL,
+    chapter_id     TEXT NOT NULL,
+    chapter_title  TEXT NOT NULL,
+    section_title  TEXT DEFAULT '',
+    page_start     INTEGER DEFAULT 0,
+    page_end       INTEGER DEFAULT 0,
+    text           TEXT NOT NULL,
+    char_count     INTEGER DEFAULT 0,
+    embedding      BLOB,
+    created_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_textbook ON rag_chunks(textbook_id);
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_chapter ON rag_chunks(textbook_id, chapter_id);
+
+CREATE TABLE IF NOT EXISTS rag_index_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    role       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    tool_name  TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
 """
 
 
@@ -426,3 +460,111 @@ def list_integration_decisions(run_id: str | None = None) -> list[dict]:
             base["source_refs"] = json.loads(r["source_refs"] or "[]")
             out.append(base)
         return out
+
+
+def update_integration_decision_action(
+    decision_id: str, action: str, reason: str, confidence: float | None = None,
+) -> bool:
+    fields = ["action=?", "reason=?"]
+    values: list[object] = [action, reason]
+    if confidence is not None:
+        fields.append("confidence=?")
+        values.append(confidence)
+    values.append(decision_id)
+    with conn() as c:
+        cur = c.execute(
+            f"UPDATE integration_decisions SET {', '.join(fields)} WHERE decision_id=?",
+            values,
+        )
+        return cur.rowcount > 0
+
+
+# ============== RAG chunks ==============
+
+def replace_rag_chunks(chunks: list[dict], embeddings: dict[str, bytes] | None = None) -> None:
+    from datetime import datetime
+
+    now = datetime.utcnow().isoformat()
+    embeddings = embeddings or {}
+    with conn() as c:
+        c.execute("DELETE FROM rag_chunks")
+        for ch in chunks:
+            c.execute(
+                """INSERT INTO rag_chunks
+                (chunk_id, textbook_id, textbook_title, chapter_id, chapter_title,
+                 section_title, page_start, page_end, text, char_count, embedding, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    ch["chunk_id"], ch["textbook_id"], ch["textbook_title"],
+                    ch["chapter_id"], ch["chapter_title"], ch.get("section_title", ""),
+                    ch.get("page_start", 0), ch.get("page_end", 0),
+                    ch["text"], ch.get("char_count", len(ch["text"])),
+                    embeddings.get(ch["chunk_id"]), now,
+                ),
+            )
+        c.execute(
+            "INSERT OR REPLACE INTO rag_index_meta (key, value) VALUES (?, ?)",
+            ("chunk_count", str(len(chunks))),
+        )
+        c.execute(
+            "INSERT OR REPLACE INTO rag_index_meta (key, value) VALUES (?, ?)",
+            ("updated_at", now),
+        )
+
+
+def list_rag_chunks() -> list[dict]:
+    with conn() as c:
+        rows = c.execute("SELECT * FROM rag_chunks ORDER BY textbook_id, chapter_id, chunk_id").fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_rag_status() -> dict:
+    with conn() as c:
+        rows = c.execute("SELECT key, value FROM rag_index_meta").fetchall()
+        meta = {r["key"]: r["value"] for r in rows}
+        count = c.execute("SELECT COUNT(*) AS cnt FROM rag_chunks").fetchone()["cnt"]
+        embedded = c.execute(
+            "SELECT COUNT(*) AS cnt FROM rag_chunks WHERE embedding IS NOT NULL"
+        ).fetchone()["cnt"]
+        textbooks = c.execute(
+            "SELECT COUNT(DISTINCT textbook_id) AS cnt FROM rag_chunks"
+        ).fetchone()["cnt"]
+        return {
+            "status": "ready" if count else "empty",
+            "chunk_count": count,
+            "embedded_count": embedded,
+            "textbook_count": textbooks,
+            "updated_at": meta.get("updated_at"),
+        }
+
+
+# ============== Chat history ==============
+
+def append_chat_message(session_id: str, message: ChatMessage) -> None:
+    with conn() as c:
+        c.execute(
+            """INSERT INTO chat_messages (session_id, role, content, tool_name, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                session_id, message.role, message.content, message.tool_name,
+                message.timestamp.isoformat(),
+            ),
+        )
+
+
+def list_chat_messages(session_id: str, limit: int = 50) -> list[ChatMessage]:
+    with conn() as c:
+        rows = c.execute(
+            """SELECT * FROM chat_messages WHERE session_id=?
+               ORDER BY id DESC LIMIT ?""",
+            (session_id, limit),
+        ).fetchall()
+        return [
+            ChatMessage(
+                role=r["role"],
+                content=r["content"],
+                tool_name=r["tool_name"],
+                timestamp=r["created_at"],  # type: ignore[arg-type]
+            )
+            for r in reversed(rows)
+        ]

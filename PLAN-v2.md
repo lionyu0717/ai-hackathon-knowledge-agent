@@ -188,6 +188,12 @@
 - ❌ OpenAI Embedding（国内网络 + 计费）
 - ❌ 前后端分离部署（单容器 FastAPI 直接 mount static 前端）
 
+**Phase 4 实现调整（2026-05-10）**：
+- 原计划 ChromaDB 持久化向量库，在当前黑客松部署版本中调整为 SQLite `rag_chunks.embedding` BLOB 存储 BGE 向量。
+- 保留 Plan v2 核心检索逻辑：Markdown-aware 500-800 字分块 + 90 字 overlap、BGE 向量召回、BM25、RRF 融合、top-5 引用回答。
+- 取舍理由：单容器部署更稳，减少 Chroma 运行时/磁盘目录问题；后续可无缝把 `retriever.py` 的向量读取替换成 Chroma。
+- LLM 不可用时，RAG 回答退化为带引用的原文摘录，保证演示现场不会空响应。
+
 ---
 
 ## 第 3 部分 · 4h Phase 拆解（240 分钟）

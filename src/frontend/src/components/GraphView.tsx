@@ -215,7 +215,7 @@ export function GraphView({ textbookId }: { textbookId: string }) {
           label: { fontWeight: "bold" },
         },
         categories: categories.map((c) => ({ name: c })),
-        nodes: graph.nodes.map((n) => ({
+        data: graph.nodes.map((n) => ({
           ...n,
           category_name: n.category,
           symbolSize: Math.min(72, 15 + n.value * 3 + (clickCounts[n.id] || 0) * 2),

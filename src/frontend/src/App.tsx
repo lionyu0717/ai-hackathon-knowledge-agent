@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
 import { UploadPanel, type TextbookSummary } from "./components/UploadPanel";
 import { GraphView } from "./components/GraphView";
+import { ChatPanel } from "./components/ChatPanel";
 import { IntegratePanel } from "./components/IntegratePanel";
+import { RagPanel } from "./components/RagPanel";
 import "./App.css";
 
 type CenterView = "global" | "graph" | "chapters";
+type SideView = "integrate" | "rag" | "chat";
 
 export default function App() {
   const [selected, setSelected] = useState<TextbookSummary | null>(null);
   const [view, setView] = useState<CenterView>("global");
+  const [sideView, setSideView] = useState<SideView>("integrate");
 
   return (
     <div
@@ -101,7 +105,14 @@ export default function App() {
 
       {/* Right: features panel placeholder */}
       <aside style={{ borderLeft: "1px solid #e5e7eb", padding: "1rem", overflowY: "auto" }}>
-        <IntegratePanel />
+        <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+          <ViewBtn active={sideView === "integrate"} onClick={() => setSideView("integrate")}>整合</ViewBtn>
+          <ViewBtn active={sideView === "rag"} onClick={() => setSideView("rag")}>RAG</ViewBtn>
+          <ViewBtn active={sideView === "chat"} onClick={() => setSideView("chat")}>对话</ViewBtn>
+        </div>
+        {sideView === "integrate" && <IntegratePanel />}
+        {sideView === "rag" && <RagPanel />}
+        {sideView === "chat" && <ChatPanel />}
       </aside>
     </div>
   );

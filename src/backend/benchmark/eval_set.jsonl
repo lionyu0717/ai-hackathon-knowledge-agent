@@ -1,0 +1,10 @@
+{"id":"fact_01","type":"fact","question":"什么是内环境？","expected_keywords":["内环境","细胞外液"],"expected_textbooks":["03_生理学","07_病理生理学"]}
+{"id":"fact_02","type":"fact","question":"发热的定义是什么？","expected_keywords":["发热","体温"],"expected_textbooks":["05_病理学","07_病理生理学"]}
+{"id":"fact_03","type":"fact","question":"什么是水肿？","expected_keywords":["水肿","液体"],"expected_textbooks":["05_病理学","07_病理生理学"]}
+{"id":"fact_04","type":"fact","question":"缺氧会影响哪些功能？","expected_keywords":["缺氧","氧"],"expected_textbooks":["07_病理生理学"]}
+{"id":"compare_01","type":"compare","question":"发热和过热有什么区别？","expected_keywords":["发热","过热","调定点"],"expected_textbooks":["07_病理生理学"]}
+{"id":"compare_02","type":"compare","question":"炎症和免疫反应有什么关系？","expected_keywords":["炎症","免疫"],"expected_textbooks":["05_病理学","07_病理生理学"]}
+{"id":"reason_01","type":"reason","question":"为什么稳态对机体功能重要？","expected_keywords":["稳态","内环境"],"expected_textbooks":["03_生理学"]}
+{"id":"reason_02","type":"reason","question":"休克为什么会导致组织灌注不足？","expected_keywords":["休克","灌注"],"expected_textbooks":["07_病理生理学"]}
+{"id":"cross_01","type":"cross","question":"生理学中的稳态和病理生理学中的疾病发生有什么联系？","expected_keywords":["稳态","疾病"],"expected_textbooks":["03_生理学","07_病理生理学"]}
+{"id":"cross_02","type":"cross","question":"病理学和病理生理学都如何讨论炎症？","expected_keywords":["炎症"],"expected_textbooks":["05_病理学","07_病理生理学"]}
